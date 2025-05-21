@@ -154,7 +154,7 @@ if __name__ == '__main__':
         raise ValueError('Either --video or --image has to be provided')
 
     net = PoseEstimationWithMobileNet()
-    checkpoint = torch.load(args.checkpoint_path, map_location='cpu')
+    checkpoint = torch.load(args.checkpoint_path, map_location='cpu', weights_only=False)
     load_state(net, checkpoint)
 
     frame_provider = ImageReader(args.images)
