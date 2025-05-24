@@ -43,22 +43,23 @@ def train(prepared_train_labels, train_images_folder, num_refinement_stages, bas
 
     cbanet = net.insert_cbanet()
 
-    optimizer = optim.Adam([
-        # {'params': get_parameters_conv(net.model, 'weight')},
-        # {'params': get_parameters_conv_depthwise(net.model, 'weight'), 'weight_decay': 0},
-        # {'params': get_parameters_bn(net.model, 'weight'), 'weight_decay': 0},
-        # {'params': get_parameters_bn(net.model, 'bias'), 'lr': base_lr * 2, 'weight_decay': 0},
-        # {'params': get_parameters_conv(net.cpm, 'weight'), 'lr': base_lr},
-        # {'params': get_parameters_conv(net.cpm, 'bias'), 'lr': base_lr * 2, 'weight_decay': 0},
-        # {'params': get_parameters_conv_depthwise(net.cpm, 'weight'), 'weight_decay': 0},
-        # {'params': get_parameters_conv(net.initial_stage, 'weight'), 'lr': base_lr},
-        # {'params': get_parameters_conv(net.initial_stage, 'bias'), 'lr': base_lr * 2, 'weight_decay': 0},
-        # {'params': get_parameters_conv(net.refinement_stages, 'weight'), 'lr': base_lr * 4},
-        # {'params': get_parameters_conv(net.refinement_stages, 'bias'), 'lr': base_lr * 8, 'weight_decay': 0},
-        # {'params': get_parameters_bn(net.refinement_stages, 'weight'), 'weight_decay': 0},
-        # {'params': get_parameters_bn(net.refinement_stages, 'bias'), 'lr': base_lr * 2, 'weight_decay': 0},
-        cbanet.parameters(),
-    ], lr=base_lr, weight_decay=5e-4)
+    # optimizer = optim.Adam([
+    #     {'params': get_parameters_conv(net.model, 'weight')},
+    #     {'params': get_parameters_conv_depthwise(net.model, 'weight'), 'weight_decay': 0},
+    #     {'params': get_parameters_bn(net.model, 'weight'), 'weight_decay': 0},
+    #     {'params': get_parameters_bn(net.model, 'bias'), 'lr': base_lr * 2, 'weight_decay': 0},
+    #     {'params': get_parameters_conv(net.cpm, 'weight'), 'lr': base_lr},
+    #     {'params': get_parameters_conv(net.cpm, 'bias'), 'lr': base_lr * 2, 'weight_decay': 0},
+    #     {'params': get_parameters_conv_depthwise(net.cpm, 'weight'), 'weight_decay': 0},
+    #     {'params': get_parameters_conv(net.initial_stage, 'weight'), 'lr': base_lr},
+    #     {'params': get_parameters_conv(net.initial_stage, 'bias'), 'lr': base_lr * 2, 'weight_decay': 0},
+    #     {'params': get_parameters_conv(net.refinement_stages, 'weight'), 'lr': base_lr * 4},
+    #     {'params': get_parameters_conv(net.refinement_stages, 'bias'), 'lr': base_lr * 8, 'weight_decay': 0},
+    #     {'params': get_parameters_bn(net.refinement_stages, 'weight'), 'weight_decay': 0},
+    #     {'params': get_parameters_bn(net.refinement_stages, 'bias'), 'lr': base_lr * 2, 'weight_decay': 0},
+    # ], lr=base_lr, weight_decay=5e-4)
+
+    optimizer = optim.Adam(cbanet.parameters(), lr=base_lr, weight_decay=5e-4)
 
     num_iter = 0
     current_epoch = 0
