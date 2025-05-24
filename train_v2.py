@@ -79,6 +79,7 @@ def train(prepared_train_labels, train_images_folder, num_refinement_stages, bas
                 current_epoch = checkpoint['current_epoch']
 
     net = DataParallel(net).cuda()
+    cbanet.cuda()
     net.train()
     cbanet.train()
     for epochId in range(current_epoch, 280):
