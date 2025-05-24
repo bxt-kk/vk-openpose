@@ -1,7 +1,119 @@
+from typing import Tuple, Callable
+from torch import Tensor
 import torch
-from torch import nn
+import torch.nn as nn
+import torch.nn.functional as F
 
 from modules.conv import conv, conv_dw, conv_dw_no_bn
+
+# <<<
+DEFAULT_NORM_LAYER = nn.BatchNorm2d # LayerNorm2d
+DEFAULT_ACTIVATION = nn.Hardswish
+DEFAULT_SIGMOID    = nn.Hardsigmoid
+
+
+class ConvNormActive(nn.Sequential):
+
+    def __init__(
+            self,
+            in_planes:   int,
+            out_planes:  int,
+            kernel_size: int | Tuple[int, int]=3,
+            stride:      int | Tuple[int, int]=1,
+            dilation:    int | Tuple[int, int]=1,
+            groups:      int=1,
+            norm_layer:  Callable[..., nn.Module] | None=DEFAULT_NORM_LAYER,
+            activation:  Callable[..., nn.Module] | None=DEFAULT_ACTIVATION,
+        ):
+
+        if isinstance(kernel_size, int):
+            kernel_size = kernel_size, kernel_size
+        if isinstance(dilation, int):
+            dilation = dilation, dilation
+        padding = tuple(
+            (ks + 2 * (dl - 1) - 1) // 2 for ks, dl in zip(kernel_size, dilation))
+        layers = [nn.Conv2d(
+            in_planes, out_planes, kernel_size, stride, padding, dilation, groups=groups),
+        ]
+        if norm_layer is not None:
+            layers.append(norm_layer(out_planes))
+        if activation is not None:
+            layers.append(activation())
+        super().__init__(*layers)
+
+
+class ChannelAttention(nn.Module):
+
+    def __init__(
+            self,
+            in_planes:     int,
+            shrink_factor: int=4,
+        ):
+
+        super().__init__()
+
+        shrink_dim = in_planes // shrink_factor
+        self.dense = nn.Sequential(
+            nn.Conv2d(in_planes, shrink_dim, 1),
+            DEFAULT_ACTIVATION(inplace=False),
+            nn.Conv2d(shrink_dim, in_planes, 1),
+            DEFAULT_SIGMOID(inplace=False),
+        )
+
+    def forward(self, x:Tensor) -> Tensor:
+        f = F.adaptive_avg_pool2d(x, 1)
+        return self.dense(f) * x
+
+
+class SpatialAttention(nn.Module):
+
+    def __init__(
+            self,
+            in_planes:   int,
+            kernel_size: int=7,
+        ):
+
+        super().__init__()
+
+        self.fc = ConvNormActive(in_planes, 1, 1, norm_layer=None)
+        self.dense = ConvNormActive(
+            2, 1, kernel_size, norm_layer=None, activation=DEFAULT_SIGMOID)
+
+    def forward(self, x:Tensor) -> Tensor:
+        f = torch.cat([
+            x.mean(dim=1, keepdim=True),
+            self.fc(x),
+        ], dim=1)
+        return self.dense(f) * x
+
+
+class CBANet(nn.Module):
+
+    def __init__(
+            self,
+            in_planes:     int,
+            out_planes:    int,
+            kernel_size:   int=7,
+            shrink_factor: int=4,
+            norm_layer:    Callable[..., nn.Module]=DEFAULT_NORM_LAYER,
+        ):
+
+        super().__init__()
+
+        self.channel_attention = ChannelAttention(in_planes, shrink_factor)
+        self.spatial_attention = SpatialAttention(in_planes, kernel_size)
+        self.project = ConvNormActive(
+            in_planes, out_planes, 1, norm_layer=norm_layer, activation=None)
+
+        self.alpha = nn.Parameter(torch.zeros(1, ))
+
+    def forward(self, x:Tensor) -> Tensor:
+        x0 = x
+        x = self.channel_attention(x)
+        x = self.spatial_attention(x)
+        x = self.project(x)
+        return x0 * (1 - self.alpha) + x * self.alpha
+# >>>
 
 
 class Cpm(nn.Module):
@@ -111,9 +223,21 @@ class PoseEstimationWithMobileNet(nn.Module):
             self.refinement_stages.append(RefinementStage(num_channels + num_heatmaps + num_pafs, num_channels,
                                                           num_heatmaps, num_pafs))
 
+        self.cpm_out_channels = num_channels
+        self.ext_modules = {}
+
+    def insert_cbanet(self) -> CBANet:
+        module = CBANet(self.cpm_out_channels, self.cpm_out_channels)
+        self.ext_modules['cbanet'] = module
+        return module
+
     def forward(self, x):
         backbone_features = self.model(x)
         backbone_features = self.cpm(backbone_features)
+
+        cbanet = self.ext_modules.get('cbanet')
+        if cbanet:
+            backbone_features = cbanet(backbone_features)
 
         stages_output = self.initial_stage(backbone_features)
         for refinement_stage in self.refinement_stages:
